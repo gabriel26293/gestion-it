@@ -1,0 +1,22 @@
+-- 1. Asegurar que usamos la base de datos correcta
+CREATE DATABASE IF NOT EXISTS logeo;
+USE logeo;
+
+-- 2. Crear la tabla con todas las columnas necesarias
+CREATE TABLE IF NOT EXISTS usuarios (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    nombre_completo VARCHAR(100) NOT NULL,
+    usuario VARCHAR(50) NOT NULL UNIQUE,
+    password VARCHAR(255) NOT NULL,
+    rol ENUM('admin', 'operativo') DEFAULT 'operativo',
+    ultimo_login DATETIME NULL,
+    creado_en TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- 3. Limpiar la tabla para evitar errores de "usuario duplicado" si ya existía
+TRUNCATE TABLE usuarios;
+
+-- 4. Insertar tu usuario con los datos completos
+-- Nota: Usamos 'admin123' en texto plano como pediste para esta prueba
+INSERT INTO usuarios (nombre_completo, usuario, password, rol) 
+VALUES ('Administrador del Sistema', 'admin', 'admin123', 'admin');
