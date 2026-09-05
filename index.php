@@ -25,7 +25,7 @@ $mostrar_modal_cambio_clave = false;
 /**
  * Función auxiliar para configurar y enviar correos
  */
-function enviarCorreo($destinatario, $asunto, $cuerpo) {
+function enviarCorreo($destinatario, $asunto, $cuerpo, $replyTo = null) {
     $mail = new PHPMailer(true);
     try {
         $mail->isSMTP();
@@ -40,6 +40,10 @@ function enviarCorreo($destinatario, $asunto, $cuerpo) {
         $mail->setFrom('testadministrador@gmail.com', 'NEO ADMIN SYSTEM');
         $mail->addAddress($destinatario); 
 
+        if ($replyTo) {
+            $mail->addReplyTo($replyTo);
+        }
+
         $mail->isHTML(true);
         $mail->Subject = $asunto;
         $mail->Body    = $cuerpo;
@@ -49,6 +53,38 @@ function enviarCorreo($destinatario, $asunto, $cuerpo) {
     } catch (Exception $e) {
         return false;
     }
+}
+
+// ENDPOINT AJAX: ENVIAR CONSULTA DESDE LA TERMINAL DE AYUDA (BOT)
+if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_GET['action']) && $_GET['action'] == 'enviar_consulta_bot') {
+    ob_clean();
+    header('Content-Type: application/json');
+
+    $comentario = trim($_POST['comentario'] ?? '');
+    $email_usuario = trim($_POST['email'] ?? '');
+
+    if (empty($comentario) || empty($email_usuario) || !filter_var($email_usuario, FILTER_VALIDATE_EMAIL)) {
+        echo json_encode(['success' => false, 'message' => 'Datos incompletos o correo inválido.']);
+        exit();
+    }
+
+    $destinatario = 'testadministrador@gmail.com';
+    $asunto = 'terminal de ayuda';
+    $cuerpo = "<div style='font-family: sans-serif; padding: 25px; background: #0f172a; color: #ffffff; border-radius: 12px; border: 1px solid #38bdf8;'>
+                <h3 style='color: #38bdf8; margin-top: 0;'>Nueva Consulta - Terminal de Ayuda</h3>
+                <p><strong>Correo de contacto:</strong> {$email_usuario}</p>
+                <p><strong>Mensaje / Consulta:</strong></p>
+                <div style='background: #1e293b; padding: 15px; border-radius: 8px; color: #e2e8f0; font-size: 14px;'>
+                    " . nl2br(htmlspecialchars($comentario)) . "
+                </div>
+               </div>";
+
+    if (enviarCorreo($destinatario, $asunto, $cuerpo, $email_usuario)) {
+        echo json_encode(['success' => true]);
+    } else {
+        echo json_encode(['success' => false, 'message' => 'No se pudo enviar el correo de soporte.']);
+    }
+    exit();
 }
 
 // 1. LÓGICA DE LOGIN NORMAL CON VERIFICACIÓN POR USUARIO O EMAIL Y CADUCIDAD DE CONTRASEÑA
@@ -580,14 +616,14 @@ if (isset($_GET['action']) && $_GET['action'] == 'buscar_nodo_editar' && isset($
         .support-bot-trigger i { color: var(--deep-space); font-size: 30px; }
 
         #chatBot {
-            position: fixed; bottom: 110px; right: 30px; width: 320px;
+            position: fixed; bottom: 110px; right: 30px; width: 340px;
             background: #ffffff; border-radius: 20px; box-shadow: 0 20px 50px rgba(0,0,0,0.5);
             display: none; z-index: 1001; overflow: hidden;
         }
 
         .bot-header { 
             background: var(--neon-blue); padding: 15px 20px; color: var(--deep-space); font-weight: 800;
-            display: flex; justify-content: space-between;
+            display: flex; justify-content: space-between; align-items: center;
         }
         
         .search-results-list {
@@ -660,7 +696,6 @@ if (isset($_GET['action']) && $_GET['action'] == 'buscar_nodo_editar' && isset($
         </form>
     </div>
 
-    <!-- MODAL DE CAMBIO OBLIGATORIO DE CLAVE CADUCADA -->
     <div class="modal fade" id="modalClaveExpirada" tabindex="-1" data-bs-backdrop="static" data-bs-keyboard="false">
         <div class="modal-dialog modal-dialog-centered">
             <div class="modal-content" style="background: #0f172a; border: 1px solid #f43f5e; border-radius: 25px; box-shadow: 0 0 40px rgba(244, 63, 94, 0.4);">
@@ -952,11 +987,29 @@ if (isset($_GET['action']) && $_GET['action'] == 'buscar_nodo_editar' && isset($
             <i class="bi bi-x-lg" style="cursor:pointer" onclick="toggleBot()"></i>
         </div>
         <div class="p-4" style="color: #475569;">
-            <p class="small mb-4">¿En qué podemos ayudarte? Notifique al administrador de guardia de inmediato.</p>
-            <form action="index.php" method="POST">
-                <input type="email" name="email_soporte" class="form-control form-control-sm mb-3" placeholder="Tu correo para contacto" required style="background: #f1f5f9; color: black; border: 1px solid #cbd5e1;">
-                <button type="submit" name="btn_soporte_bot" class="btn btn-dark w-100 fw-bold">ENVIAR REPORTE</button>
-            </form>
+            <div id="botPaso1">
+                <p class="small mb-2 fw-bold" style="color: #0f172a;">¿En qué podemos ayudarte?</p>
+                <p class="text-muted style-sm mb-3" style="font-size: 0.8rem;">Escribe a continuación tu consulta o la falla detectada:</p>
+                <textarea id="botComentario" class="form-control form-control-sm mb-3" rows="3" placeholder="Escribe tu mensaje aquí..." style="background: #f1f5f9; color: black; border: 1px solid #cbd5e1; border-radius: 10px; resize: none;"></textarea>
+                <button type="button" onclick="irAPaso2Bot()" class="btn btn-dark w-100 fw-bold" style="border-radius: 10px;">ENVIAR MENSAJE</button>
+            </div>
+
+            <div id="botPaso2" class="d-none">
+                <p class="small mb-2 fw-bold" style="color: #0f172a;">Correo de contacto</p>
+                <p class="text-muted style-sm mb-3" style="font-size: 0.8rem;">Ingresa la casilla de e-mail donde deseas recibir nuestra respuesta:</p>
+                <input type="email" id="botEmail" class="form-control form-control-sm mb-3" placeholder="tu-correo@dominio.com" style="background: #f1f5f9; color: black; border: 1px solid #cbd5e1; border-radius: 10px;">
+                <div class="d-flex gap-2">
+                    <button type="button" onclick="volverAPaso1Bot()" class="btn btn-outline-secondary btn-sm w-30" style="border-radius: 8px;">Atrás</button>
+                    <button type="button" id="btnEnviarBot" onclick="finalizarReporteBot()" class="btn btn-dark btn-sm w-70 fw-bold" style="border-radius: 8px;">CONFIRMAR Y ENVIAR</button>
+                </div>
+            </div>
+
+            <div id="botPaso3" class="d-none text-center py-3">
+                <i class="bi bi-check-circle-fill text-success" style="font-size: 2.5rem;"></i>
+                <h6 class="fw-bold mt-2 mb-1" style="color: #0f172a;">¡Reporte Enviado!</h6>
+                <p class="small text-muted mb-3">Recibirás una respuesta a la brevedad en tu correo electrónico.</p>
+                <button type="button" onclick="toggleBot()" class="btn btn-sm btn-outline-dark px-4" style="border-radius: 8px;">Cerrar</button>
+            </div>
         </div>
     </div>
 
@@ -968,7 +1021,72 @@ if (isset($_GET['action']) && $_GET['action'] == 'buscar_nodo_editar' && isset($
                 bot.style.display = 'none';
             } else {
                 bot.style.display = 'block';
+                // Resetear el bot al paso 1 al abrirlo
+                resetearBot();
             }
+        }
+
+        function irAPaso2Bot() {
+            const txt = document.getElementById('botComentario').value.trim();
+            if (txt === '') {
+                alert('Por favor, escribe un comentario o mensaje antes de continuar.');
+                return;
+            }
+            document.getElementById('botPaso1').classList.add('d-none');
+            document.getElementById('botPaso2').classList.remove('d-none');
+        }
+
+        function volverAPaso1Bot() {
+            document.getElementById('botPaso2').classList.add('d-none');
+            document.getElementById('botPaso1').classList.remove('d-none');
+        }
+
+        function finalizarReporteBot() {
+            const txt = document.getElementById('botComentario').value.trim();
+            const email = document.getElementById('botEmail').value.trim();
+            
+            if (email === '' || !email.includes('@')) {
+                alert('Por favor, ingresa un correo electrónico válido para recibir la respuesta.');
+                return;
+            }
+
+            const btnEnviar = document.getElementById('btnEnviarBot');
+            btnEnviar.disabled = true;
+            btnEnviar.innerText = 'Enviando...';
+
+            const formData = new FormData();
+            formData.append('comentario', txt);
+            formData.append('email', email);
+
+            fetch('index.php?action=enviar_consulta_bot', {
+                method: 'POST',
+                body: formData
+            })
+            .then(res => res.json())
+            .then(data => {
+                btnEnviar.disabled = false;
+                btnEnviar.innerText = 'CONFIRMAR Y ENVIAR';
+
+                if (data.success) {
+                    document.getElementById('botPaso2').classList.add('d-none');
+                    document.getElementById('botPaso3').classList.remove('d-none');
+                } else {
+                    alert(data.message || 'Error al enviar la consulta. Intente nuevamente.');
+                }
+            })
+            .catch(err => {
+                btnEnviar.disabled = false;
+                btnEnviar.innerText = 'CONFIRMAR Y ENVIAR';
+                alert('Error al conectar con el servidor.');
+            });
+        }
+
+        function resetearBot() {
+            document.getElementById('botComentario').value = '';
+            document.getElementById('botEmail').value = '';
+            document.getElementById('botPaso1').classList.remove('d-none');
+            document.getElementById('botPaso2').classList.add('d-none');
+            document.getElementById('botPaso3').classList.add('d-none');
         }
 
         document.addEventListener("DOMContentLoaded", function() {

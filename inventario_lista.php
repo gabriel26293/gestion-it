@@ -57,7 +57,7 @@ $resultado = $conexion->query($query);
 $res_categorias = $conexion->query("SELECT * FROM categorias ORDER BY nombre ASC");
 $res_cat_modal = $conexion->query("SELECT * FROM categorias ORDER BY nombre ASC");
 
-// CORRECCIÓN CLAVE: Se consulta el campo 'area' en lugar de 'sector'
+// Consulta para usuarios y áreas
 $res_usuarios_modal = $conexion->query("SELECT id, nombre_completo, area FROM usuarios ORDER BY nombre_completo ASC");
 $usuarios_opciones = "";
 while($u = $res_usuarios_modal->fetch_assoc()){
@@ -78,6 +78,11 @@ while($u = $res_usuarios_modal->fetch_assoc()){
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     
+    <!-- Librerías para exportación -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.31/jspdf.plugin.autotable.min.js"></script>
+
     <style>
         :root {
             --bg-dark: #0f172a;
@@ -260,10 +265,29 @@ while($u = $res_usuarios_modal->fetch_assoc()){
         </div>
 
         <div class="search-container">
-            <div class="mb-3">
+            <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
                 <button type="button" class="btn btn-info fw-bold" data-bs-toggle="modal" data-bs-target="#modalNuevo">
                     <i class="bi bi-plus-circle"></i> Nuevo Equipo
                 </button>
+
+                <!-- DESPLEGABLE DESCARGAR REPORTE -->
+                <div class="dropdown">
+                    <button class="btn btn-outline-info fw-bold dropdown-toggle" type="button" id="dropdownReporte" data-bs-toggle="dropdown" aria-expanded="false">
+                        <i class="bi bi-download me-1"></i> Descargar Reporte
+                    </button>
+                    <ul class="dropdown-menu dropdown-menu-dark dropdown-menu-end shadow" aria-labelledby="dropdownReporte">
+                        <li>
+                            <a class="dropdown-item py-2" href="#" onclick="exportarExcel(); return false;">
+                                <i class="bi bi-file-earmark-excel text-success me-2"></i> Exportar a Excel
+                            </a>
+                        </li>
+                        <li>
+                            <a class="dropdown-item py-2" href="#" onclick="exportarPDF(); return false;">
+                                <i class="bi bi-file-earmark-pdf text-danger me-2"></i> Exportar a PDF
+                            </a>
+                        </li>
+                    </ul>
+                </div>
             </div>
             
             <div class="row g-3">
@@ -282,7 +306,8 @@ while($u = $res_usuarios_modal->fetch_assoc()){
         </div>
 
         <div class="row g-4" id="inventoryGrid">
-            <?php while($row = $resultado->fetch_assoc()): 
+            <?php 
+            while($row = $resultado->fetch_assoc()): 
                 $estado_actual = $row['estado'] ?: 'Disponible';
                 $st_comp = mb_strtolower($estado_actual, 'UTF-8');
                 
@@ -295,7 +320,18 @@ while($u = $res_usuarios_modal->fetch_assoc()){
 
                 $search_data = strtolower($row['marca']." ".$row['modelo']." ".$row['codigo_patrimonial']." ".$row['sector']." ".$row['nombre_usuario']);
             ?>
-            <div class="col-md-6 col-lg-4 asset-item" data-category="<?php echo $row['categoria_nombre']; ?>" data-search="<?php echo $search_data; ?>">
+            <div class="col-md-6 col-lg-4 asset-item" 
+                 data-category="<?php echo htmlspecialchars($row['categoria_nombre']); ?>" 
+                 data-search="<?php echo htmlspecialchars($search_data); ?>"
+                 data-id="<?php echo $row['id']; ?>"
+                 data-patrimonio="<?php echo htmlspecialchars($row['codigo_patrimonial'] ?? ''); ?>"
+                 data-marca="<?php echo htmlspecialchars($row['marca'] ?? ''); ?>"
+                 data-modelo="<?php echo htmlspecialchars($row['modelo'] ?? ''); ?>"
+                 data-serie="<?php echo htmlspecialchars($row['serie'] ?? ''); ?>"
+                 data-estado="<?php echo htmlspecialchars($estado_actual); ?>"
+                 data-sector="<?php echo htmlspecialchars($row['sector'] ?: 'No definido'); ?>"
+                 data-usuario="<?php echo htmlspecialchars($row['nombre_usuario'] ?: 'Sin asignar'); ?>">
+                
                 <div class="asset-card">
                     <span class="status-pill <?php echo $st_class; ?>">
                         <?php echo htmlspecialchars($estado_actual); ?>
@@ -305,14 +341,14 @@ while($u = $res_usuarios_modal->fetch_assoc()){
 
                     <div class="asset-icon-wrapper"><i class="bi bi-pc-display"></i></div>
 
-                    <h5 class="fw-bold mb-1"><?php echo $row['marca']." ".$row['modelo']; ?></h5>
-                    <p class="small text-secondary mb-3">Patrimonio: <span class="text-white"><?php echo $row['codigo_patrimonial']; ?></span></p>
+                    <h5 class="fw-bold mb-1"><?php echo htmlspecialchars($row['marca']." ".$row['modelo']); ?></h5>
+                    <p class="small text-secondary mb-3">Patrimonio: <span class="text-white"><?php echo htmlspecialchars($row['codigo_patrimonial']); ?></span></p>
 
-                    <div class="info-row"><i class="bi bi-geo-alt"></i><span>Sector: <strong><?php echo $row['sector'] ?: 'No definido'; ?></strong></span></div>
-                    <div class="info-row"><i class="bi bi-person-badge"></i><span>Asignado: <strong><?php echo $row['nombre_usuario'] ?: 'Sin asignar'; ?></strong></span></div>
+                    <div class="info-row"><i class="bi bi-geo-alt"></i><span>Sector: <strong><?php echo htmlspecialchars($row['sector'] ?: 'No definido'); ?></strong></span></div>
+                    <div class="info-row"><i class="bi bi-person-badge"></i><span>Asignado: <strong><?php echo htmlspecialchars($row['nombre_usuario'] ?: 'Sin asignar'); ?></strong></span></div>
 
                     <div class="d-flex justify-content-between align-items-center mt-3 pt-3 border-top border-white border-opacity-10">
-                        <span class="badge bg-secondary opacity-50"><?php echo $row['categoria_nombre']; ?></span>
+                        <span class="badge bg-secondary opacity-50"><?php echo htmlspecialchars($row['categoria_nombre']); ?></span>
                         <button onclick='abrirModalEditar(<?php echo json_encode($row); ?>)' class="btn btn-sm btn-outline-info border-0">
                             <i class="bi bi-pencil-square fs-5"></i>
                         </button>
@@ -490,7 +526,6 @@ while($u = $res_usuarios_modal->fetch_assoc()){
             document.getElementById('edit_id').value = data.id;
             document.getElementById('edit_sector').value = data.sector || '';
             
-            // Filtrar usuarios según el sector cargado en edición
             filtrarUsuariosPorSector('#modalEditar', data.sector || '', data.usuario_asignado_id || '');
             
             document.getElementById('edit_estado').value = data.estado || 'Disponible';
@@ -508,7 +543,6 @@ while($u = $res_usuarios_modal->fetch_assoc()){
         document.getElementById('searchInput').addEventListener('input', filter);
         document.getElementById('categoryFilter').addEventListener('change', filter);
 
-        // FUNCIÓN FILTRADORA: Muestra solo opciones de usuarios que pertenecen al área/sector seleccionado
         function filtrarUsuariosPorSector(containerSelector, sectorElegido, usuarioASeleccionar = null) {
             const container = document.querySelector(containerSelector);
             if (!container) return;
@@ -518,7 +552,6 @@ while($u = $res_usuarios_modal->fetch_assoc()){
 
             options.forEach(option => {
                 const sectorUsuario = option.dataset.sector;
-                // Opción vacía ("Sin asignar") siempre visible
                 if (!option.value) {
                     option.hidden = false;
                     option.disabled = false;
@@ -531,11 +564,9 @@ while($u = $res_usuarios_modal->fetch_assoc()){
                 }
             });
 
-            // Si se mandó preseleccionar un ID de usuario (caso editar)
             if (usuarioASeleccionar !== null) {
                 selectUsuario.value = usuarioASeleccionar;
             } else {
-                // Si la selección actual fue ocultada, reiniciar a la primera opción ("Sin asignar")
                 const selectedOption = selectUsuario.options[selectUsuario.selectedIndex];
                 if (selectedOption && selectedOption.disabled) {
                     selectUsuario.value = "";
@@ -543,7 +574,6 @@ while($u = $res_usuarios_modal->fetch_assoc()){
             }
         }
 
-        // ASIGNACIÓN DE EVENTOS DE VINCULACIÓN
         function inicializarVinculacion(containerSelector) {
             const container = document.querySelector(containerSelector);
             if (!container) return;
@@ -551,12 +581,10 @@ while($u = $res_usuarios_modal->fetch_assoc()){
             const selectSector = container.querySelector('.select-sector');
             const selectUsuario = container.querySelector('.select-usuario');
 
-            // 1. Al cambiar Sector -> Mostrar solo los usuarios del sector/área elegida
             selectSector.addEventListener('change', function () {
                 filtrarUsuariosPorSector(containerSelector, this.value);
             });
 
-            // 2. Al cambiar Usuario -> Autoseleccionar su sector/área
             selectUsuario.addEventListener('change', function () {
                 const optionSelected = this.options[this.selectedIndex];
                 const sectorDelUsuario = optionSelected.dataset.sector;
@@ -568,17 +596,14 @@ while($u = $res_usuarios_modal->fetch_assoc()){
             });
         }
 
-        // Inicialización de la vinculación
         inicializarVinculacion('#modalEditar');
         inicializarVinculacion('#modalNuevo');
 
-        // Resetear modal Nuevo cuando se abra
         document.getElementById('modalNuevo').addEventListener('show.bs.modal', function () {
             document.getElementById('formNuevoEquipo').reset();
             filtrarUsuariosPorSector('#modalNuevo', '');
         });
 
-        // Envío Editar
         document.getElementById('formUpdateInventario').onsubmit = function(e) {
             e.preventDefault();
             fetch('inventario_update_proceso.php', { method: 'POST', body: new FormData(this) })
@@ -591,7 +616,6 @@ while($u = $res_usuarios_modal->fetch_assoc()){
             });
         };
 
-        // Envío Nuevo
         document.getElementById('formNuevoEquipo').onsubmit = function(e) {
             e.preventDefault();
             fetch('inventario_insert_proceso.php', { method: 'POST', body: new FormData(this) })
@@ -603,6 +627,86 @@ while($u = $res_usuarios_modal->fetch_assoc()){
                 }
             });
         };
+
+        // OBTIENE SÓLO LOS ELEMENTOS VISIBLES TRAS APLICAR FILTROS
+        function obtenerDatosFiltrados() {
+            const itemsVisibles = document.querySelectorAll('.asset-item:not([style*="display: none"])');
+            const data = [];
+
+            itemsVisibles.forEach(item => {
+                data.push({
+                    "ID": item.dataset.id,
+                    "Código Patrimonio": item.dataset.patrimonio,
+                    "Categoría": item.dataset.category,
+                    "Marca": item.dataset.marca,
+                    "Modelo": item.dataset.modelo,
+                    "N° Serie": item.dataset.serie,
+                    "Estado": item.dataset.estado,
+                    "Sector": item.dataset.sector,
+                    "Usuario Asignado": item.dataset.usuario
+                });
+            });
+
+            return data;
+        }
+
+        // EXPORTAR REPORTE FILTRADO A EXCEL
+        function exportarExcel() {
+            const data = obtenerDatosFiltrados();
+
+            if (data.length === 0) {
+                Swal.fire('Atención', 'No hay registros visibles para exportar.', 'warning');
+                return;
+            }
+
+            const worksheet = XLSX.utils.json_to_sheet(data);
+            const workbook = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(workbook, worksheet, "Inventario Filtrado");
+
+            XLSX.writeFile(workbook, "Reporte_Inventario_Filtrado.xlsx");
+        }
+
+        // EXPORTAR REPORTE FILTRADO A PDF
+        function exportarPDF() {
+            const data = obtenerDatosFiltrados();
+
+            if (data.length === 0) {
+                Swal.fire('Atención', 'No hay registros visibles para exportar.', 'warning');
+                return;
+            }
+
+            const { jsPDF } = window.jspdf;
+            const doc = new jsPDF('landscape');
+
+            const headers = [["ID", "Código Patrimonio", "Categoría", "Marca", "Modelo", "N° Serie", "Estado", "Sector", "Usuario Asignado"]];
+            const rows = data.map(item => [
+                item["ID"],
+                item["Código Patrimonio"],
+                item["Categoría"],
+                item["Marca"],
+                item["Modelo"],
+                item["N° Serie"],
+                item["Estado"],
+                item["Sector"],
+                item["Usuario Asignado"]
+            ]);
+
+            doc.setFontSize(16);
+            doc.text("Reporte de Inventario - NeoAdmin", 14, 15);
+            doc.setFontSize(10);
+            doc.text("Fecha: " + new Date().toLocaleDateString(), 14, 22);
+
+            doc.autoTable({
+                head: headers,
+                body: rows,
+                startY: 28,
+                theme: 'grid',
+                headStyles: { fillColor: [56, 189, 248], textColor: 255 },
+                styles: { fontSize: 8 }
+            });
+
+            doc.save("Reporte_Inventario_Filtrado.pdf");
+        }
     </script>
 </body>
 </html>
