@@ -276,6 +276,7 @@ $dias_restantes_clave = $_SESSION['dias_restantes_clave'] ?? 30;
             <a href="tickets_lista.php" class="nav-link-neo">
                 <i class="bi bi-headset"></i> Mesa de Ayuda
             </a>
+			<a href="bc_lista.php" class="nav-link-neo"><i class="bi bi-journal-text"></i> Base de Conocimiento</a>
             <div class="vr mx-2 opacity-25" style="height: 20px; align-self: center;"></div>
             
             <!-- Foto de perfil y menú desplegable -->

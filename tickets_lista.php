@@ -223,6 +223,7 @@ if($deptos_res) {
         <div class="d-flex align-items-center gap-2">
             <a href="dashboard.php" class="nav-link-neo"><i class="bi bi-house-door"></i> Inicio</a>
             <a href="tickets_lista.php" class="nav-link-neo" style="background: var(--accent-soft); color: var(--accent);"><i class="bi bi-headset"></i> Mesa de Ayuda</a>
+			<a href="bc_lista.php" class="nav-link-neo"><i class="bi bi-journal-text"></i> Base de Conocimiento</a>
             <div class="vr mx-2 opacity-25" style="height: 20px; align-self: center;"></div>
 
             <!-- Foto de perfil y menú desplegable -->
