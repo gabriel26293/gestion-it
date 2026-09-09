@@ -171,7 +171,22 @@ body {
                 <p class="small text-secondary mb-3"><?php echo htmlspecialchars(mb_substr(strip_tags($articulo['contenido']), 0, 90)); ?>...</p>
                 <div class="d-flex justify-content-between align-items-center pt-3 border-top border-white border-opacity-10">
                     <span class="badge bg-secondary opacity-50"><?php echo htmlspecialchars($articulo['categoria_nombre'] ?? 'Sin categoría'); ?></span>
-                    <span class="small text-secondary"><i class="bi bi-eye"></i> <?php echo (int)$articulo['vistas']; ?></span>
+                    <div class="d-flex align-items-center gap-3">
+                        <span class="small text-secondary"><i class="bi bi-eye"></i> <?php echo (int)$articulo['vistas']; ?></span>
+                        <?php if ($esPersonalTecnico):
+                            $datosArticuloJson = htmlspecialchars(json_encode([
+                                'id' => $articulo['id'],
+                                'titulo' => $articulo['titulo'],
+                                'contenido' => $articulo['contenido'],
+                                'categoria_id' => $articulo['categoria_id'],
+                                'visibilidad' => $articulo['visibilidad'],
+                            ], JSON_HEX_APOS | JSON_HEX_QUOT | JSON_UNESCAPED_UNICODE), ENT_QUOTES, 'UTF-8');
+                        ?>
+                        <button type="button" class="btn btn-sm btn-outline-info border-0 p-0 boton-editar-articulo" data-articulo="<?php echo $datosArticuloJson; ?>">
+                            <i class="bi bi-pencil-square fs-6"></i>
+                        </button>
+                        <?php endif; ?>
+                    </div>
                 </div>
             </a>
         </div>
@@ -224,6 +239,51 @@ body {
         </div>
     </div>
 </div>
+
+<!-- MODAL EDITAR ARTÍCULO -->
+<div class="modal fade" id="modalEditarArticulo" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+        <div class="modal-content shadow-lg">
+            <div class="modal-header border-0">
+                <h5 class="modal-title fw-bold" style="font-family: 'Orbitron';">EDITAR ARTÍCULO</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="formularioEditarArticulo">
+                    <input type="hidden" name="id" id="editar_id">
+                    <div class="row g-3">
+                        <div class="col-md-8">
+                            <label class="small text-secondary mb-1">TÍTULO</label>
+                            <input type="text" name="titulo" id="editar_titulo" class="form-control campo-formulario" required>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="small text-secondary mb-1">CATEGORÍA</label>
+                            <select name="categoria_id" id="editar_categoria" class="form-select campo-formulario" required>
+                                <?php foreach ($listaCategorias as $categoria): ?>
+                                <option value="<?php echo $categoria['id']; ?>"><?php echo htmlspecialchars($categoria['nombre']); ?></option>
+                                <?php endforeach; ?>
+                            </select>
+                        </div>
+                        <div class="col-12">
+                            <label class="small text-secondary mb-1">CONTENIDO</label>
+                            <textarea name="contenido" id="editar_contenido" class="form-control campo-formulario" rows="8" required></textarea>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="small text-secondary mb-1">VISIBILIDAD</label>
+                            <select name="visibilidad" id="editar_visibilidad" class="form-select campo-formulario">
+                                <option value="publico">Público (todos los usuarios)</option>
+                                <option value="interno">Interno (solo admin/técnico)</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="mt-4">
+                        <button type="submit" class="btn btn-info w-100 fw-bold py-2" style="font-family: 'Orbitron'; letter-spacing: 1px;">GUARDAR CAMBIOS</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
 <?php endif; ?>
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
@@ -243,6 +303,39 @@ document.getElementById('filtroCategoria').addEventListener('change', filtrar);
 document.getElementById('formularioNuevoArticulo').onsubmit = function (evento) {
     evento.preventDefault();
     fetch('bc_insertar_proceso.php', { method: 'POST', body: new FormData(this) })
+        .then(function (respuesta) { return respuesta.text(); })
+        .then(function (datos) {
+            if (datos.trim() === "success") {
+                location.reload();
+            } else {
+                Swal.fire('Error', datos, 'error');
+            }
+        });
+};
+
+const modalEditarArticulo = new bootstrap.Modal(document.getElementById('modalEditarArticulo'));
+
+function abrirModalEditarArticulo(datosArticulo) {
+    document.getElementById('editar_id').value = datosArticulo.id;
+    document.getElementById('editar_titulo').value = datosArticulo.titulo;
+    document.getElementById('editar_contenido').value = datosArticulo.contenido;
+    document.getElementById('editar_categoria').value = datosArticulo.categoria_id;
+    document.getElementById('editar_visibilidad').value = datosArticulo.visibilidad;
+    modalEditarArticulo.show();
+}
+
+document.querySelectorAll('.boton-editar-articulo').forEach(function (boton) {
+    boton.addEventListener('click', function (evento) {
+        evento.preventDefault();
+        evento.stopPropagation();
+        const datosArticulo = JSON.parse(this.dataset.articulo);
+        abrirModalEditarArticulo(datosArticulo);
+    });
+});
+
+document.getElementById('formularioEditarArticulo').onsubmit = function (evento) {
+    evento.preventDefault();
+    fetch('bc_actualizar_proceso.php', { method: 'POST', body: new FormData(this) })
         .then(function (respuesta) { return respuesta.text(); })
         .then(function (datos) {
             if (datos.trim() === "success") {
