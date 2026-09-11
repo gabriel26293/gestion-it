@@ -43,7 +43,7 @@ $filtro_fecha_desde = $_GET['fecha_desde'] ?? '';
 $filtro_fecha_hasta = $_GET['fecha_hasta'] ?? '';
 $buscar = $_GET['buscar'] ?? '';
 
-// --- 1. LÓGICA DE CONTADORES CORREGIDA PARA NUEVOS ESTADOS ---
+// --- 1. LÓGICA DE CONTADORES ---
 $query_stats = "SELECT 
     COUNT(*) as total,
     SUM(CASE WHEN estado = 'Nuevo' THEN 1 ELSE 0 END) as nuevos,
@@ -65,7 +65,37 @@ if (!empty($filtro_fecha_hasta)) {
 $stats_res = $conexion->query($query_stats);
 $stats = $stats_res->fetch_assoc();
 
-// --- 2. CONSULTA DE TICKETS CON FILTROS DINÁMICOS ---
+// --- 2. CONSULTA PARA DATOS DE DIAGRAMAS/GRÁFICOS (MES, HISTÓRICO Y ANUAL) ---
+$user_condition = ($rol != 'administrador' && $rol != 'tecnico') ? " AND solicitante_id = $usuario_id" : "";
+
+// Estadísticas Mes Actual
+$q_mes = $conexion->query("SELECT estado, COUNT(*) as cant FROM tickets WHERE MONTH(fecha_creacion) = MONTH(CURRENT_DATE()) AND YEAR(fecha_creacion) = YEAR(CURRENT_DATE()) $user_condition GROUP BY estado");
+$chart_mes = ['Nuevo' => 0, 'En curso' => 0, 'Resuelto' => 0, 'Cerrado' => 0];
+while($r = $q_mes->fetch_assoc()) { if(isset($chart_mes[$r['estado']])) $chart_mes[$r['estado']] = (int)$r['cant']; }
+
+// Estadísticas Año Actual
+$q_anio = $conexion->query("SELECT estado, COUNT(*) as cant FROM tickets WHERE YEAR(fecha_creacion) = YEAR(CURRENT_DATE()) $user_condition GROUP BY estado");
+$chart_anio = ['Nuevo' => 0, 'En curso' => 0, 'Resuelto' => 0, 'Cerrado' => 0];
+while($r = $q_anio->fetch_assoc()) { if(isset($chart_anio[$r['estado']])) $chart_anio[$r['estado']] = (int)$r['cant']; }
+
+// Estadísticas Histórico (Últimos 6 meses por Nombre de Mes)
+$q_hist = $conexion->query("SELECT DATE_FORMAT(fecha_creacion, '%Y-%m') as mes_key, DATE_FORMAT(fecha_creacion, '%b %Y') as mes_nombre, COUNT(*) as total,
+    SUM(CASE WHEN estado IN ('Resuelto', 'Cerrado') THEN 1 ELSE 0 END) as resueltos,
+    SUM(CASE WHEN estado IN ('Nuevo', 'En curso') THEN 1 ELSE 0 END) as pendientes
+    FROM tickets WHERE fecha_creacion >= DATE_SUB(NOW(), INTERVAL 6 MONTH) $user_condition
+    GROUP BY mes_key ORDER BY mes_key ASC");
+
+$chart_hist_labels = [];
+$chart_hist_resueltos = [];
+$chart_hist_pendientes = [];
+
+while($r = $q_hist->fetch_assoc()) {
+    $chart_hist_labels[] = $r['mes_nombre'];
+    $chart_hist_resueltos[] = (int)$r['resueltos'];
+    $chart_hist_pendientes[] = (int)$r['pendientes'];
+}
+
+// --- 3. CONSULTA DE TICKETS CON FILTROS DINÁMICOS ---
 if ($rol == 'administrador' || $rol == 'tecnico') {
     $sql = "SELECT t.id, t.asunto, t.descripcion, t.prioridad, t.estado, t.tipo, t.fecha_creacion, t.fecha_limite,
                   t.fecha_mantenimiento, t.detalle_resolucion, t.archivo_adjunto, t.archivo_nombre, t.archivo_tipo,
@@ -151,24 +181,18 @@ if($deptos_res) {
         .nav-link-neo { text-decoration: none; padding: 8px 16px; border-radius: 10px; font-size: 0.9rem; color: var(--text-gray); display: flex; align-items: center; gap: 8px; transition: 0.2s; }
         .nav-link-neo:hover { color: #fff; background: rgba(255, 255, 255, 0.05); }
 
-        .logout-btn {
-            color: #f87171;
-            border: 1px solid rgba(248, 113, 113, 0.2);
-        }
+        .logout-btn { color: #f87171; border: 1px solid rgba(248, 113, 113, 0.2); }
 
         .user-avatar {
-            width: 38px;
-            height: 38px;
-            object-fit: cover;
-            border-radius: 50%;
-            border: 2px solid var(--accent);
-            background-color: var(--card-bg);
+            width: 38px; height: 38px; object-fit: cover; border-radius: 50%;
+            border: 2px solid var(--accent); background-color: var(--card-bg);
         }
         
         .card-stat { background: var(--card-bg); border-radius: 15px; border: 1px solid rgba(255,255,255,0.05); padding: 15px; text-align: center; text-decoration: none; display: block; transition: 0.2s; }
         .card-stat:hover { border-color: var(--accent); transform: translateY(-2px); }
-        .card-stat h6 { font-family: 'Orbitron'; font-weight: bold; font-size: 1.2rem; margin: 0; }
-        .card-stat small { color: #64748b; font-size: 0.7rem; font-weight: 700; letter-spacing: 1px; }
+        .card-stat h6 { font-family: 'Orbitron'; font-weight: bold; font-size: 1.4rem; margin: 0; }
+        /* CORRECCIÓN VISUAL DE TEXTO DE MÉTRICAS */
+        .card-stat-title { color: #cbd5e1 !important; font-size: 0.75rem; font-weight: 700; letter-spacing: 1px; display: block; margin-bottom: 4px; }
         
         .card-ticket { background: var(--card-bg); border-radius: 20px; border: 1px solid rgba(255,255,255,0.05); padding: 1.5rem; height: 100%; transition: all 0.3s ease; position: relative; border-left: 5px solid transparent; }
         .card-normal { border-left-color: var(--accent); }
@@ -176,7 +200,6 @@ if($deptos_res) {
         .card-en-curso { border-left-color: #fbbf24; background: rgba(251, 191, 36, 0.02); }
         .card-expired { border-left-color: var(--danger-alert); background: rgba(239, 68, 68, 0.05); animation: pulse-red 2s infinite; }
         
-        /* Badges de prioridad estilizados por color */
         .badge-prioridad-baja { background-color: rgba(16, 185, 129, 0.15) !important; color: #10b981 !important; border: 1px solid rgba(16, 185, 129, 0.3); }
         .badge-prioridad-media { background-color: rgba(245, 158, 11, 0.15) !important; color: #f59e0b !important; border: 1px solid rgba(245, 158, 11, 0.3); }
         .badge-prioridad-alta { background-color: rgba(239, 68, 68, 0.15) !important; color: #ef4444 !important; border: 1px solid rgba(239, 68, 68, 0.4); box-shadow: 0 0 8px rgba(239, 68, 68, 0.2); }
@@ -192,11 +215,9 @@ if($deptos_res) {
         .search-wrapper-neo i { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: var(--text-gray); }
         .search-wrapper-neo input { padding-left: 38px !important; }
         
-        /* Modernización Custom SweetAlert2 Dark Futuristic */
         .neo-swal-popup { background: rgba(22, 28, 45, 0.95) !important; backdrop-filter: blur(15px); border: 1px solid rgba(56, 189, 248, 0.2) !important; border-radius: 20px !important; box-shadow: 0 20px 50px rgba(0,0,0,0.5) !important; color: #f8fafc !important; }
         .neo-swal-title { font-family: 'Orbitron', sans-serif !important; font-weight: bold !important; letter-spacing: 1px; color: #fff !important; font-size: 1.3rem !important; }
         .neo-swal-input, .neo-swal-textarea, .neo-swal-select { background-color: #0b0f1a !important; color: white !important; border: 1px solid rgba(255,255,255,0.1) !important; border-radius: 12px !important; padding: 10px !important; font-family: 'Inter', sans-serif; }
-        .neo-swal-input:focus, .neo-swal-textarea:focus, .neo-swal-select:focus { border-color: var(--accent) !important; box-shadow: 0 0 8px var(--accent-soft) !important; }
         
         @keyframes pulse-red {
             0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.2); }
@@ -211,6 +232,9 @@ if($deptos_res) {
         .btn-action-card span { font-size: 8px; text-transform: uppercase; color: var(--text-gray); font-weight: 700; }
         
         .label-date-neo { font-size: 0.75rem; color: var(--text-gray); font-weight: 600; margin-bottom: 4px; display: block; padding-left: 4px; }
+        
+        .btn-tab-chart { background: rgba(255,255,255,0.05); border: 1px solid var(--glass-border); color: var(--text-gray); font-size: 0.8rem; font-weight: 600; padding: 6px 14px; border-radius: 10px; transition: 0.2s; }
+        .btn-tab-chart.active, .btn-tab-chart:hover { background: var(--accent); color: #0b0f1a; border-color: var(--accent); font-weight: bold; }
     </style>
 </head>
 <body>
@@ -226,7 +250,6 @@ if($deptos_res) {
 			<a href="bc_lista.php" class="nav-link-neo"><i class="bi bi-journal-text"></i> Base de Conocimiento</a>
             <div class="vr mx-2 opacity-25" style="height: 20px; align-self: center;"></div>
 
-            <!-- Foto de perfil y menú desplegable -->
             <div class="dropdown me-2">
                 <a href="#" class="d-flex align-items-center text-white text-decoration-none dropdown-toggle" id="userMenuHeader" data-bs-toggle="dropdown" aria-expanded="false">
                     <img src="<?php echo htmlspecialchars($foto_perfil); ?>" alt="Perfil" class="user-avatar me-2">
@@ -256,6 +279,7 @@ if($deptos_res) {
             </div>
         </div>
 
+        <!-- FILTROS -->
         <div class="p-4 mb-4 rounded-4" style="background: var(--card-bg); border: 1px solid rgba(255,255,255,0.05);">
             <form method="GET" action="tickets_lista.php" id="formFiltros" class="row g-3 align-items-end">
                 <div class="col-md-3">
@@ -337,14 +361,73 @@ if($deptos_res) {
             </form>
         </div>
 
-        <div class="row g-3 mb-5">
-            <div class="col-md"><a href="tickets_lista.php" class="card-stat"><h6><?php echo $stats['total']; ?></h6><small>TOTAL</small></a></div>
-            <div class="col-md"><a href="tickets_lista.php?estado=Nuevo" class="card-stat"><h6 class="text-info"><?php echo $stats['nuevos'] ?? 0; ?></h6><small>NUEVOS</small></a></div>
-            <div class="col-md"><a href="tickets_lista.php?estado=En curso" class="card-stat"><h6 class="text-warning"><?php echo $stats['en_curso'] ?? 0; ?></h6><small>EN CURSO</small></a></div>
-            <div class="col-md"><a href="tickets_lista.php?estado=Resuelto" class="card-stat"><h6 class="text-success"><?php echo $stats['resueltos'] ?? 0; ?></h6><small>RESUELTOS</small></a></div>
-            <div class="col-md"><a href="tickets_lista.php?estado=Cerrado" class="card-stat"><h6 class="text-muted"><?php echo $stats['cerrados'] ?? 0; ?></h6><small>CERRADOS</small></a></div>
+        <!-- TARJETAS DE MÉTRICAS -->
+        <div class="row g-3 mb-4">
+            <div class="col-md">
+                <a href="tickets_lista.php" class="card-stat">
+                    <span class="card-stat-title">TOTAL</span>
+                    <h6><?php echo $stats['total']; ?></h6>
+                </a>
+            </div>
+            <div class="col-md">
+                <a href="tickets_lista.php?estado=Nuevo" class="card-stat">
+                    <span class="card-stat-title">NUEVOS</span>
+                    <h6 class="text-info"><?php echo $stats['nuevos'] ?? 0; ?></h6>
+                </a>
+            </div>
+            <div class="col-md">
+                <a href="tickets_lista.php?estado=En curso" class="card-stat">
+                    <span class="card-stat-title">EN CURSO</span>
+                    <h6 class="text-warning"><?php echo $stats['en_curso'] ?? 0; ?></h6>
+                </a>
+            </div>
+            <div class="col-md">
+                <a href="tickets_lista.php?estado=Resuelto" class="card-stat">
+                    <span class="card-stat-title">RESUELTOS</span>
+                    <h6 class="text-success"><?php echo $stats['resueltos'] ?? 0; ?></h6>
+                </a>
+            </div>
+            <div class="col-md">
+                <a href="tickets_lista.php?estado=Cerrado" class="card-stat">
+                    <span class="card-stat-title">CERRADOS</span>
+                    <h6 class="text-muted"><?php echo $stats['cerrados'] ?? 0; ?></h6>
+                </a>
+            </div>
         </div>
 
+        <!-- SECCIÓN DE DIAGRAMAS / ANÁLISIS DE PORCENTAJES -->
+        <div class="p-4 mb-5 rounded-4" style="background: var(--card-bg); border: 1px solid rgba(255,255,255,0.05);">
+            <div class="d-flex flex-wrap justify-content-between align-items-center mb-3 gap-2">
+                <div>
+                    <h5 class="fw-bold mb-0 text-white" style="font-family: 'Orbitron'; font-size: 1rem;"><i class="bi bi-pie-chart-fill text-info me-2"></i>DIAGRAMAS Y PORCENTAJES</h5>
+                    <small class="text-secondary">Visión gráfica de rendimiento y distribución de tickets</small>
+                </div>
+                <div class="d-flex align-items-center gap-2">
+                    <button type="button" class="btn-tab-chart active" onclick="cambiarVistaGrafico('mes', this)">Este Mes</button>
+                    <button type="button" class="btn-tab-chart" onclick="cambiarVistaGrafico('historico', this)">Últimos Meses</button>
+                    <button type="button" class="btn-tab-chart" onclick="cambiarVistaGrafico('anio', this)">Anual</button>
+                    <button type="button" onclick="descargarGrafico()" class="btn btn-sm btn-outline-info rounded-3 fw-bold ms-2">
+                        <i class="bi bi-download me-1"></i> Descargar Diagrama
+                    </button>
+                </div>
+            </div>
+
+            <div class="row align-items-center g-4">
+                <div class="col-md-7 d-flex justify-content-center" style="min-height: 260px; position: relative;">
+                    <canvas id="neoChartTickets" style="max-height: 280px; width: 100%;"></canvas>
+                </div>
+                <div class="col-md-5">
+                    <div class="p-3 rounded-3" style="background: rgba(11, 15, 26, 0.6); border: 1px solid rgba(255,255,255,0.05);">
+                        <h6 class="text-white fw-bold mb-3 small" style="font-family: 'Orbitron';" id="chartSummaryTitle">DISTRIBUCIÓN DEL MES</h6>
+                        <div id="chartPercentagesContainer">
+                            <!-- Inyección dinámica de porcentajes -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- LISTADO DE TARJETAS DE TICKETS -->
         <div class="row g-4">
             <?php if ($res->num_rows === 0): ?>
                 <div class="col-12 text-center py-5">
@@ -375,15 +458,18 @@ if($deptos_res) {
                 ];
                 $ticketJsonSeguro = htmlspecialchars(json_encode($ticketArray, JSON_HEX_APOS | JSON_HEX_QUOT | JSON_UNESCAPED_UNICODE), ENT_QUOTES, 'UTF-8');
                 
-                // Mapeo dinámico de estilos de tarjeta segun el estado
                 $cardEstadoClass = 'card-normal';
                 if($row['estado'] === 'Nuevo') $cardEstadoClass = 'card-nuevo';
                 if($row['estado'] === 'En curso') $cardEstadoClass = 'card-en-curso';
 
-                // Mapeo dinámico de estilos de badge por prioridad
                 $badgePrioridadClass = 'badge-prioridad-baja';
                 if(strtolower($row['prioridad']) === 'media') $badgePrioridadClass = 'badge-prioridad-media';
                 if(strtolower($row['prioridad']) === 'alta') $badgePrioridadClass = 'badge-prioridad-alta';
+
+                // Formatear fechas para visualización en las cards
+                $fecha_creacion_f = date('d/m/Y H:i', strtotime($row['fecha_creacion']));
+                $fecha_resolucion_f = !empty($row['fecha_mantenimiento']) ? date('d/m/Y H:i', strtotime($row['fecha_mantenimiento'])) : null;
+                $fecha_limite_f = !empty($displayDeadline) ? date('d/m/Y H:i', strtotime($displayDeadline)) : null;
             ?>
             <div class="col-md-4">
                 <div class="card-ticket <?php echo $cardEstadoClass; ?>" 
@@ -402,7 +488,26 @@ if($deptos_res) {
                     <p class="text-secondary small mb-1">Tipo: <span class="text-white fw-semibold"><?php echo htmlspecialchars($row['tipo']); ?></span></p>
                     <p class="text-secondary small mb-1">Estado: <span class="text-info fw-bold"><?php echo htmlspecialchars($row['estado']); ?></span></p>
                     <p class="text-secondary small mb-1">Técnico: <span class="text-white"><?php echo htmlspecialchars($row['tecnico_nombre'] ?? 'Pendiente'); ?></span></p>
-                    <p class="text-secondary small mb-3" style="font-size:0.75rem;">Área: <span class="text-info"><?php echo htmlspecialchars($row['solicitante_depto'] ?? 'General'); ?></span></p>
+                    <p class="text-secondary small mb-2" style="font-size:0.75rem;">Área: <span class="text-info"><?php echo htmlspecialchars($row['solicitante_depto'] ?? 'General'); ?></span></p>
+
+                    <!-- VISUALIZACIÓN DE FECHAS EN LA CARD -->
+                    <div class="p-2 mb-3 rounded-3" style="background: rgba(11, 15, 26, 0.6); border: 1px solid rgba(255,255,255,0.05); font-size: 0.73rem;">
+                        <div class="d-flex justify-content-between text-secondary mb-1">
+                            <span><i class="bi bi-calendar-event me-1 text-info"></i>Creado:</span>
+                            <span class="text-white fw-semibold"><?php echo $fecha_creacion_f; ?></span>
+                        </div>
+                        <?php if (in_array($row['estado'], ['Resuelto', 'Cerrado'])): ?>
+                            <div class="d-flex justify-content-between text-secondary">
+                                <span><i class="bi bi-check-circle me-1 text-success"></i>Resuelto:</span>
+                                <span class="text-success fw-semibold"><?php echo $fecha_resolucion_f ?? 'Finalizado'; ?></span>
+                            </div>
+                        <?php else: ?>
+                            <div class="d-flex justify-content-between text-secondary">
+                                <span><i class="bi bi-clock me-1 text-warning"></i>Límite:</span>
+                                <span class="text-warning fw-semibold"><?php echo $fecha_limite_f ?? 'S/D'; ?></span>
+                            </div>
+                        <?php endif; ?>
+                    </div>
                     
                     <div class="d-flex justify-content-between align-items-center mb-1">
                         <span class="small text-secondary text-truncate" style="max-width: 70%;"><i class="bi bi-person me-1"></i><?php echo htmlspecialchars($row['solicitante_nombre']); ?></span>
@@ -422,6 +527,7 @@ if($deptos_res) {
         </div>
     </div>
 
+    <!-- MODAL DE DETALLES Y EDICIÓN -->
     <div class="modal fade" id="modalDetalle" tabindex="-1" aria-hidden="true">
         <div class="modal-dialog modal-dialog-centered modal-lg">
             <div class="modal-content" style="background: rgba(22, 28, 45, 0.95); backdrop-filter: blur(15px); border-radius: 20px; border: 1px solid rgba(56, 189, 248, 0.25); box-shadow: 0 0 25px rgba(56, 189, 248, 0.15);">
@@ -433,8 +539,144 @@ if($deptos_res) {
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
     <script>
+        // --- DATOS PHP A JAVASCRIPT PARA GRÁFICOS ---
+        const rawChartMes = <?php echo json_encode($chart_mes); ?>;
+        const rawChartAnio = <?php echo json_encode($chart_anio); ?>;
+        const rawChartHist = {
+            labels: <?php echo json_encode($chart_hist_labels); ?>,
+            resueltos: <?php echo json_encode($chart_hist_resueltos); ?>,
+            pendientes: <?php echo json_encode($chart_hist_pendientes); ?>
+        };
+
+        let activeChart = null;
+
+        function renderDiagrama(tipo) {
+            const ctx = document.getElementById('neoChartTickets').getContext('2d');
+            const summaryContainer = document.getElementById('chartPercentagesContainer');
+            const summaryTitle = document.getElementById('chartSummaryTitle');
+
+            if(activeChart) { activeChart.destroy(); }
+
+            if(tipo === 'mes' || tipo === 'anio') {
+                const dataSource = (tipo === 'mes') ? rawChartMes : rawChartAnio;
+                summaryTitle.innerText = (tipo === 'mes') ? "PORCENTAJES DE ESTE MES" : "PORCENTAJES DEL AÑO";
+
+                const labels = ['Nuevos', 'En curso', 'Resueltos', 'Cerrados'];
+                const values = [dataSource.Nuevo, dataSource['En curso'], dataSource.Resuelto, dataSource.Cerrado];
+                const total = values.reduce((a, b) => a + b, 0);
+
+                const bgColors = ['#38bdf8', '#fbbf24', '#10b981', '#64748b'];
+
+                activeChart = new Chart(ctx, {
+                    type: 'doughnut',
+                    data: {
+                        labels: labels,
+                        datasets: [{
+                            data: values,
+                            backgroundColor: bgColors,
+                            borderWidth: 2,
+                            borderColor: '#161c2d'
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: { position: 'bottom', labels: { color: '#f8fafc', font: { family: 'Inter', size: 11 } } }
+                        }
+                    }
+                });
+
+                let pctHtml = '';
+                if(total === 0) {
+                    pctHtml = `<span class="text-secondary small">No hay tickets registrados en este período.</span>`;
+                } else {
+                    labels.forEach((lbl, idx) => {
+                        const val = values[idx];
+                        const pct = ((val / total) * 100).toFixed(1);
+                        pctHtml += `
+                            <div class="d-flex justify-content-between align-items-center mb-2">
+                                <span class="small text-secondary" style="color:${bgColors[idx]} !important;">● ${lbl}</span>
+                                <span class="fw-bold text-white small">${val} (${pct}%)</span>
+                            </div>
+                            <div class="progress mb-2" style="height: 5px; background: rgba(255,255,255,0.05);">
+                                <div class="progress-bar" role="progressbar" style="width: ${pct}%; background-color: ${bgColors[idx]};"></div>
+                            </div>`;
+                    });
+                }
+                summaryContainer.innerHTML = pctHtml;
+
+            } else if(tipo === 'historico') {
+                summaryTitle.innerText = "EFECTIVIDAD DE RESOLUCIÓN HISTÓRICA";
+
+                activeChart = new Chart(ctx, {
+                    type: 'bar',
+                    data: {
+                        labels: rawChartHist.labels,
+                        datasets: [
+                            { label: 'Resueltos / Cerrados', data: rawChartHist.resueltos, backgroundColor: '#10b981' },
+                            { label: 'Nuevos / En Curso', data: rawChartHist.pendientes, backgroundColor: '#fbbf24' }
+                        ]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        scales: {
+                            x: { ticks: { color: '#94a3b8' }, grid: { display: false } },
+                            y: { ticks: { color: '#94a3b8' }, grid: { color: 'rgba(255,255,255,0.05)' } }
+                        },
+                        plugins: {
+                            legend: { position: 'bottom', labels: { color: '#f8fafc', font: { family: 'Inter', size: 11 } } }
+                        }
+                    }
+                });
+
+                let pctHtml = '';
+                if(rawChartHist.labels.length === 0) {
+                    pctHtml = `<span class="text-secondary small">Sin historial acumulado.</span>`;
+                } else {
+                    rawChartHist.labels.forEach((mesLbl, idx) => {
+                        const res = rawChartHist.resueltos[idx];
+                        const pend = rawChartHist.pendientes[idx];
+                        const tot = res + pend;
+                        const pctEff = tot > 0 ? ((res / tot) * 100).toFixed(1) : 0;
+                        pctHtml += `
+                            <div class="d-flex justify-content-between align-items-center mb-1">
+                                <span class="small text-secondary">${mesLbl}</span>
+                                <span class="fw-bold text-info small">Efectividad: ${pctEff}%</span>
+                            </div>`;
+                    });
+                }
+                summaryContainer.innerHTML = pctHtml;
+            }
+        }
+
+        function cambiarVistaGrafico(tipo, btn) {
+            document.querySelectorAll('.btn-tab-chart').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            renderDiagrama(tipo);
+        }
+
+        function descargarGrafico() {
+            if(!activeChart) return;
+            const imageURI = activeChart.toBase64Image();
+            const link = document.createElement('a');
+            link.download = `Diagrama_Metricas_NeoAdmin.png`;
+            link.href = imageURI;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+
+        // Inicializar Gráfico con Vista Mensual
+        document.addEventListener("DOMContentLoaded", () => {
+            renderDiagrama('mes');
+        });
+
+        // --- RELOJES / TIMERS DE TICKETS ---
         function updateTimers() {
             const now = new Date().getTime();
             document.querySelectorAll('.card-ticket').forEach(card => {
@@ -528,7 +770,6 @@ if($deptos_res) {
                 }
             }
 
-            // Visualización del Comentario/Detalle de Resolución Registrado
             let detalleResolucionHtml = '';
             if (ticket.detalle_resolucion && ticket.detalle_resolucion.trim() !== '') {
                 detalleResolucionHtml = `
@@ -705,14 +946,18 @@ if($deptos_res) {
             });
         }
 
+        // DESCARGA DE REPORTES MANTENIENDO TODOS LOS FILTROS Y DATOS
         function solicitarReporte() {
             Swal.fire({
                 title: 'EXPORTAR REPORTE',
                 text: '¿En qué formato deseas descargar el listado con tus filtros actuales?',
                 icon: 'question',
                 customClass: { popup: 'neo-swal-popup', title: 'neo-swal-title' },
-                showCancelButton: true, showDenyButton: true,
-                confirmButtonColor: '#10b981', denyButtonColor: '#38bdf8', cancelButtonColor: '#475569',
+                showCancelButton: true, 
+                showDenyButton: true,
+                confirmButtonColor: '#10b981', 
+                denyButtonColor: '#38bdf8', 
+                cancelButtonColor: '#475569',
                 confirmButtonText: '<i class="bi bi-file-earmark-excel"></i> Excel',
                 denyButtonText: '<i class="bi bi-file-earmark-pdf"></i> PDF',
                 cancelButtonText: 'Cancelar'
@@ -722,11 +967,20 @@ if($deptos_res) {
                 else if (result.isDenied) formato = 'pdf';
                 else return;
 
+                // Captura los valores del formulario actual
                 const formElement = document.getElementById('formFiltros');
                 const formData = new FormData(formElement);
                 const params = new URLSearchParams(formData);
+                
+                // Mantiene el filtro de estado si vino por la URL (p. ej. desde los cards de métricas)
+                const urlParams = new URLSearchParams(window.location.search);
+                if (urlParams.has('estado') && !params.get('estado')) {
+                    params.set('estado', urlParams.get('estado'));
+                }
+
                 params.append('formato', formato);
 
+                // Redirige enviando todos los parámetros completos
                 window.location.href = `tickets_reporte.php?${params.toString()}`;
             });
         }
